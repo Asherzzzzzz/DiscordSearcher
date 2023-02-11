@@ -1,0 +1,4 @@
+discord.py
+flask
+fake_useragent
+squlite3
