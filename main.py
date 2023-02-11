@@ -31,7 +31,7 @@ client = discord.Client(intents=discord.Intents.all())
 # Output error when the status code is less than 400
 def check_status_code(response):
     if not response.ok:
-        print('ERROR ', response.status_code, ', failed to request ', response.url)
+        print('ERROR ', response.status_code, ' ', response.reason, ', failed to request ', response.url)
         with open('log/error.log', 'a') as file:
             file.write(time.asctime(time.localtime(time.time())) 
                        + ' - ' + response.reason 
@@ -41,46 +41,49 @@ def check_status_code(response):
 
 
 # Login and fetch the token(authorization)
-def fetch_token(fail_counter = 0):
-    try:
-        # Send request to get the data with a token inside
-        response = session_requests.post('https://discord.com/api/v9/auth/login', 
-                                         headers=login_headers,
-                                         json=post_data)
-        # If fail then retry
-        if not check_status_code(response):
-            print('fail to login...')
-            time.sleep(RETRY_INTERVAL_TIME)
-            fail_counter += 1
-            print('\nretry ', fail_counter)
-            return fetch_token(fail_counter)
-        else:
-            response_dict = response.json();
-            with open('secret/secret_token.json', 'r+') as file:
-                # Update token
-                token = json.load(file)
-                token['authorization'] = response_dict['token']
-                file.seek(0)
-                json.dump(token, file)
-                file.truncate()
+def fetch_token():
+    fail_counter = 0
+    while True:
+        try:
+            # Send request to get the data with a token inside
+            response = session_requests.post('https://discord.com/api/v9/auth/login', 
+                                             headers=login_headers,
+                                             json=post_data)
+            # If fail then retry
+            if not check_status_code(response):
+                print('fail to login...')
+                fail_counter += 1
+                print('\nretry ', fail_counter)
+                time.sleep(RETRY_INTERVAL_TIME)
+                continue
+            else:
+                response_dict = response.json();
+                with open('secret/secret_token.json', 'r+') as file:
+                    # Update token
+                    token = json.load(file)
+                    token['authorization'] = response_dict['token']
+                    file.seek(0)
+                    json.dump(token, file)
+                    file.truncate()
 
-            with open('json/search_headers.json', 'r') as file:
-                # Renew the token in search_headers
-                search_headers = json.load(file)
-                search_headers['authorization'] = token['authorization']
-                print('login & fetch token successfully')
-                return search_headers
+                with open('json/search_headers.json', 'r') as file:
+                    # Renew the token in search_headers
+                    search_headers = json.load(file)
+                    search_headers['authorization'] = token['authorization']
+                    print('login & fetch token successfully')
+                    return search_headers
             
-    except Exception as e:
-        print('ERROR, login & fetching token process error, check the error.log for more information')
-        with open('log/error.log', 'a') as file:
-            file.write('{} - {} - {}\n'.format(time.asctime(time.localtime(time.time())),
-                                               e,
-                                               response.reason))
-            time.sleep(RETRY_INTERVAL_TIME)
-            fail_counter += 1
-            print('\nretry ', fail_counter)
-            return fetch_token(fail_counter)
+        except Exception as e:
+            print('ERROR, login & fetching token process error, check the error.log for more information')
+
+            with open('log/error.log', 'a') as file:
+                file.write('{} - {} - {}\n'.format(time.asctime(time.localtime(time.time())),
+                                                   e,
+                                                   response.reason))
+                fail_counter += 1
+                print('\nretry ', fail_counter)
+                time.sleep(RETRY_INTERVAL_TIME)
+                continue
     
 
 # Send request to the discord message searcher to get the messages
@@ -102,7 +105,7 @@ async def search_request():
                                 
         except Exception as e:
             print('ERROR, searching process error, check the error.log for more information')
-            bot_send_error('ERROR, searching process error, check the error.log for more information')
+            await bot_send_error('ERROR, searching process error, check the error.log for more information')
 
             with open('log/error.log', 'a') as file:
                 file.write('{} - {} - {}\n'.format(time.asctime(time.localtime(time.time())), 
@@ -231,6 +234,7 @@ main section
 # Headers json file
 with open('json/login_headers.json', 'r') as file:
     login_headers = json.load(file)
+    login_headers['user-agent'] = UserAgent().random
     
 with open('secret/secret_post_data.json', 'r') as file:
     post_data = json.load(file)
@@ -248,11 +252,11 @@ session_requests = requests.session()
 # Login(fetch_token function)
 search_headers = fetch_token()
 
-# Setup sending search_request loop 
-
 
 '''
 Bot section
+
+Bot's events and functions
 '''
 
 
@@ -329,9 +333,11 @@ async def bot_send_error(text):
     await client.wait_until_ready()
     await error_channel.send(text) 
 
+
 async def bot_send_message(text):
     await client.wait_until_ready()
     await m_channel.send(text)
+
 
 # Send unsent message
 async def check_if_new_data():
@@ -373,6 +379,7 @@ async def check_if_new_data():
                 conn.commit()
         
         await asyncio.sleep(10)
+
 
 with open('secret/secret_token.json', 'r') as file:
     # Run Bot
