@@ -105,7 +105,7 @@ async def search_request():
                                 
         except Exception as e:
             print('ERROR, searching process error, check the error.log for more information')
-            await bot_send_error('ERROR, searching process error, check the error.log for more information')
+            await bot_send_error('ERROR, searching process error, ', e, ' ', response.reason)
 
             with open('log/error.log', 'a') as file:
                 file.write('{} - {} - {}\n'.format(time.asctime(time.localtime(time.time())), 
